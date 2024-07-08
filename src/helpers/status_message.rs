@@ -1,0 +1,79 @@
+use teloxide::{
+    payloads::SendMessageSetters,
+    requests::Requester,
+    types::{ChatId, Message, MessageId},
+};
+
+use crate::bot::TelegramBot;
+
+#[allow(clippy::struct_field_names)]
+pub struct StatusMessage {
+    chat_id: ChatId,
+    msg_id: MessageId,
+    reply_msg_id: Option<MessageId>,
+}
+impl StatusMessage {
+    const fn new(chat_id: ChatId, msg_id: MessageId) -> Self {
+        Self {
+            chat_id,
+            msg_id,
+            reply_msg_id: None,
+        }
+    }
+
+    pub const fn chat_id(&self) -> ChatId {
+        self.chat_id
+    }
+
+    pub const fn msg_replying_to_id(&self) -> MessageId {
+        self.msg_id
+    }
+
+    pub const fn from_message(msg: &Message) -> Self {
+        Self::new(msg.chat.id, msg.id)
+    }
+
+    pub async fn update_message(&mut self, text: &str) -> Result<(), teloxide::RequestError> {
+        match self.reply_msg_id {
+            Some(reply_id) => {
+                TelegramBot::instance()
+                    .edit_message_text(self.chat_id, reply_id, text)
+                    .await?;
+
+                Ok(())
+            }
+            None => {
+                let status_msg = TelegramBot::instance()
+                    .send_message(self.chat_id, text)
+                    .reply_to_message_id(self.msg_id)
+                    .await?;
+
+                self.reply_msg_id = Some(status_msg.id);
+
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn delete_message(&mut self) -> Result<(), teloxide::RequestError> {
+        if let Some(id) = self.reply_msg_id {
+            TelegramBot::instance()
+                .delete_message(self.chat_id, id)
+                .await?;
+        }
+
+        Ok(())
+    }
+}
+
+impl From<Message> for StatusMessage {
+    fn from(msg: Message) -> Self {
+        Self::from_message(&msg)
+    }
+}
+
+impl<'a> From<&'a Message> for StatusMessage {
+    fn from(msg: &'a Message) -> Self {
+        Self::from_message(msg)
+    }
+}
