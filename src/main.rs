@@ -141,7 +141,7 @@ async fn handle_message(bot: &TeloxideBot, msg: Message) -> ResponseResult<()> {
 
 #[tracing::instrument(skip_all, fields(chat = ?msg.chat_id(), msg = ?msg.msg_replying_to_id(), url = url.as_str()))]
 async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
-    msg.update_message("Waiting in download queue...").await?;
+    msg.update_message("Waiting in queue...").await?;
 
     let _permit = SONG_SEMAPHORE
         .acquire()
@@ -164,8 +164,10 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
 
     trace!(?song_file_path, "Song downloaded");
 
-    msg.update_message("Download finished. Processing song...\n\nThis may take a while.")
-        .await?;
+    msg.update_message(
+        "Download finished. Processing song...\n\nThis will take approximately 2x the song duration.",
+    )
+    .await?;
 
     let stem_paths = match SongProcessor::split_into_stems(
         temp_dir.path(),
