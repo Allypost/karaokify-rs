@@ -5,7 +5,7 @@ use std::{
 
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use url::Url;
 
 pub static MUSIC_DOWNLOAD_SERVICE_URL: &str = "https://yams.tf/api";
@@ -30,7 +30,7 @@ impl SongDownload {
         debug!("Downloading song");
         let download_url = tryhard::retry_fn(|| Self::get_download_url(song_url))
             .retries(5)
-            .fixed_backoff(Duration::from_secs(1))
+            .fixed_backoff(Duration::from_secs(2))
             .on_retry(|_attempt, _next_delay, err| {
                 let e = err.to_string();
 
@@ -38,7 +38,18 @@ impl SongDownload {
                     debug!(?e, "Retrying song download");
                 }
             })
-            .await?;
+            .await
+            .map_err(|e| {
+                if let Some(e) = e.downcast_ref::<reqwest::Error>() {
+                    if e.is_timeout() {
+                        return anyhow::anyhow!(
+                            "Timeout downloading song. Download provider may be down."
+                        );
+                    }
+                }
+                info!(?e, "Failed to download song");
+                anyhow::anyhow!("Failed to download song from provider")
+            })?;
         debug!(?download_url, "Download URL found. Downloading song zip.");
 
         let song_zip_path = Self::download_song_zip(download_dir, &download_url).await?;
