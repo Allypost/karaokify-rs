@@ -1,3 +1,4 @@
+pub(super) mod spotifydown;
 pub(super) mod yams;
 
 use std::path::{Path, PathBuf};
@@ -5,8 +6,12 @@ use std::path::{Path, PathBuf};
 use once_cell::sync::Lazy;
 use url::Url;
 
-pub static HANDLERS: Lazy<Vec<DownloadHandler>> =
-    Lazy::new(|| vec![DownloadHandler::new(yams::YamsProvider)]);
+pub static HANDLERS: Lazy<Vec<DownloadHandler>> = Lazy::new(|| {
+    vec![
+        DownloadHandler::new(yams::YamsProvider),
+        DownloadHandler::new(spotifydown::SpotifydownProvider),
+    ]
+});
 
 pub struct DownloadHandler {
     provider: Box<dyn Handler>,

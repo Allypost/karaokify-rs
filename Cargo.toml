@@ -10,7 +10,11 @@ async-trait = "0.1.81"
 deadqueue = "0.2.4"
 dotenvy = "0.15.7"
 dptree = "0.3.0"
+encoding_rs = "0.8.34"
+language-tags = "0.3.2"
 once_cell = { version = "1.19.0", features = ["parking_lot"] }
+percent-encoding = "2.3.1"
+regex = "1.10.5"
 reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "charset", "gzip", "json", "http2", "stream"] }
 serde = { version = "1.0.204", features = ["alloc", "derive"] }
 serde_json = { version = "1.0.120", features = ["alloc"] }

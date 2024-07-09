@@ -926,7 +926,11 @@ dependencies = [
  "deadqueue",
  "dotenvy",
  "dptree",
+ "encoding_rs",
+ "language-tags",
  "once_cell",
+ "percent-encoding",
+ "regex",
  "reqwest 0.12.5",
  "serde",
  "serde_json",
@@ -938,6 +942,12 @@ dependencies = [
  "url",
  "zip",
 ]
+
+[[package]]
+name = "language-tags"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
 
 [[package]]
 name = "lazy_static"
