@@ -1,8 +1,8 @@
-mod song_downloader;
+mod handlers;
 
 use std::path::{Path, PathBuf};
 
-use song_downloader::SongDownload;
+use handlers::HANDLERS;
 use tracing::info;
 use url::Url;
 
@@ -14,8 +14,12 @@ impl Downloader {
     ) -> Result<PathBuf, anyhow::Error> {
         info!(url = ?song_url.as_str(), "Downloading song...");
 
-        let song_file_path = SongDownload::download_song(download_dir, song_url).await?;
+        for provider in HANDLERS.iter() {
+            if provider.supports(song_url).await {
+                return provider.download(download_dir, song_url).await;
+            }
+        }
 
-        Ok(song_file_path)
+        Err(anyhow::anyhow!("No provider for provided URL found"))
     }
 }

@@ -45,7 +45,7 @@ impl SongProcessor {
         demucs_model: DemucsModel,
     ) -> anyhow::Result<Vec<PathBuf>> {
         debug!("Splitting into stems");
-        let demucs_dir = TempDir::with_prefix("karaokify-demucs-")?;
+        let demucs_dir = TempDir::with_prefix("karaokify-demucs-").await?;
 
         let cmd_status = tryhard::retry_fn(|| {
             Command::new("demucs")

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 addr = "0.15.6"
 anyhow = "1.0.86"
+async-trait = "0.1.81"
 deadqueue = "0.2.4"
 dotenvy = "0.15.7"
 dptree = "0.3.0"

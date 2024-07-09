@@ -170,7 +170,7 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
 
     msg.update_message("Downloading song...").await?;
 
-    let temp_dir = TempDir::with_prefix("karaokify-")?;
+    let temp_dir = TempDir::with_prefix("karaokify-").await?;
 
     let song_file_path = match Downloader::download_song(temp_dir.path(), &url).await {
         Err(e) => {
@@ -185,7 +185,8 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     trace!(?song_file_path, "Song downloaded");
 
     msg.update_message(
-        "Download finished. Processing song...\n\nThis will take approximately 2x the song duration.",
+        "Download finished. Processing song...\n\nThis will take approximately 2x the song \
+         duration.",
     )
     .await?;
 

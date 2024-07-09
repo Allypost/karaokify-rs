@@ -4,11 +4,21 @@ use std::{
 };
 
 use serde::Deserialize;
-use tokio::io::AsyncWriteExt;
 use tracing::{debug, info, trace};
 use url::Url;
 
-pub static MUSIC_DOWNLOAD_SERVICE_URL: &str = "https://yams.tf/api";
+use super::Handler;
+use crate::helpers::download::download_file;
+
+const API_URL: &str = "https://yams.tf/api";
+const QUALITY_MAP: &[(&str, &str)] = &[
+    ("spotify", "very_high"),
+    ("qobuz", "27"),
+    ("tidal", "3"),
+    ("apple", "high"),
+    ("deezer", "2"),
+    ("youtube", "0"),
+];
 
 #[derive(Debug, Deserialize)]
 struct YamsInitialResponse {
@@ -23,10 +33,13 @@ struct YamsStatusResponse {
     url: String,
 }
 
-pub struct SongDownload;
-impl SongDownload {
-    #[tracing::instrument(skip(song_url), fields(url = ?song_url.as_str()))]
-    pub async fn download_song(download_dir: &Path, song_url: &Url) -> anyhow::Result<PathBuf> {
+#[derive(Debug)]
+pub struct YamsProvider;
+
+#[async_trait::async_trait]
+impl Handler for YamsProvider {
+    #[tracing::instrument(skip(self, song_url), fields(url = ?song_url.as_str()))]
+    async fn download(&self, download_dir: &Path, song_url: &Url) -> anyhow::Result<PathBuf> {
         debug!("Downloading song");
         let download_url = tryhard::retry_fn(|| Self::get_download_url(song_url))
             .retries(5)
@@ -67,6 +80,12 @@ impl SongDownload {
         Ok(song_file_path)
     }
 
+    async fn supports(&self, song_url: &Url) -> bool {
+        Self::get_quality(song_url).is_some()
+    }
+}
+
+impl YamsProvider {
     #[tracing::instrument]
     async fn extract_song_from_zip(
         download_dir: PathBuf,
@@ -118,25 +137,9 @@ impl SongDownload {
     #[tracing::instrument]
     async fn download_song_zip(download_dir: &Path, download_url: &str) -> anyhow::Result<PathBuf> {
         trace!("Downloading song zip");
-        let mut download_resp = reqwest::Client::new()
-            .get(download_url)
-            .timeout(Duration::from_secs(300))
-            .send()
-            .await?
-            .error_for_status()?;
         let download_path = download_dir.join("file.zip");
 
-        trace!(path = ?download_path, "Request finished, writing to disk");
-
-        let out_file = tokio::fs::File::create(&download_path).await?;
-        let mut out_file = tokio::io::BufWriter::new(out_file);
-
-        while let Some(chunk) = download_resp.chunk().await? {
-            out_file.write_all(&chunk).await?;
-        }
-        out_file.flush().await?;
-
-        trace!("Song downloaded");
+        download_file(&download_path, download_url).await?;
 
         Ok(download_path)
     }
@@ -150,23 +153,8 @@ impl SongDownload {
 
     async fn initialize_song_download(song_url: &Url) -> anyhow::Result<String> {
         debug!("Initializing song download");
-        let quality_map = [
-            ("spotify", "very_high"),
-            ("qobuz", "27"),
-            ("tidal", "3"),
-            ("apple", "high"),
-            ("deezer", "2"),
-            ("youtube", "0"),
-        ];
 
-        let quality = quality_map.iter().find_map(|(service, quality)| {
-            song_url
-                .host_str()
-                .unwrap_or_default()
-                .find(service)
-                .map(|_| quality)
-        });
-        let quality = match quality {
+        let quality = match Self::get_quality(song_url) {
             Some(q) => q,
             None => anyhow::bail!("Could not determine quality to download"),
         };
@@ -183,7 +171,7 @@ impl SongDownload {
         );
 
         reqwest::Client::new()
-            .post(MUSIC_DOWNLOAD_SERVICE_URL)
+            .post(API_URL)
             .json(&payload)
             .timeout(Duration::from_secs(5))
             .send()
@@ -195,9 +183,19 @@ impl SongDownload {
             .map_err(std::convert::Into::into)
     }
 
+    fn get_quality(song_url: &Url) -> Option<&str> {
+        QUALITY_MAP.iter().find_map(|(service, quality)| {
+            song_url
+                .host_str()
+                .unwrap_or_default()
+                .find(service)
+                .map(|_| *quality)
+        })
+    }
+
     async fn wait_for_song_to_finish(download_id: &str) -> anyhow::Result<String> {
         debug!("Waiting for song to finish");
-        let mut api_url = Url::parse(MUSIC_DOWNLOAD_SERVICE_URL).expect("Invalid API URL");
+        let mut api_url = Url::parse(API_URL).expect("Invalid API URL");
         api_url.query_pairs_mut().append_pair("id", download_id);
 
         for _ in 0..300 {

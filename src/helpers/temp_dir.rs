@@ -1,9 +1,11 @@
 use std::{
     env,
     ffi::OsString,
-    fs::{self},
+    marker::Send,
     path::{Path, PathBuf},
 };
+
+use tokio::fs;
 
 use super::id::time_thread_id;
 
@@ -12,11 +14,14 @@ pub struct TempDir {
     delete_on_drop: bool,
 }
 impl TempDir {
-    pub fn new<T: Into<OsString>>(dir_name: T) -> Result<Self, std::io::Error> {
+    pub async fn new<T>(dir_name: T) -> Result<Self, std::io::Error>
+    where
+        T: Into<OsString> + Send,
+    {
         let tmp_dir = env::temp_dir();
         let tmp_dir = tmp_dir.join(dir_name.into());
 
-        std::fs::create_dir_all(&tmp_dir)?;
+        fs::create_dir_all(&tmp_dir).await?;
 
         Ok(Self {
             path: tmp_dir,
@@ -24,10 +29,13 @@ impl TempDir {
         })
     }
 
-    pub fn with_prefix<T: Into<OsString>>(dir_name_prefix: T) -> Result<Self, std::io::Error> {
+    pub async fn with_prefix<T>(dir_name_prefix: T) -> Result<Self, std::io::Error>
+    where
+        T: Into<OsString> + Send,
+    {
         let mut f: OsString = dir_name_prefix.into();
         f.push(time_thread_id());
-        Self::new(f)
+        Self::new(f).await
     }
 
     pub fn path(&self) -> &Path {
@@ -44,7 +52,7 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         if self.delete_on_drop {
-            let _ = fs::remove_dir_all(&self.path);
+            let _ = std::fs::remove_dir_all(&self.path);
         }
     }
 }
