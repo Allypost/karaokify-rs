@@ -17,7 +17,7 @@ use teloxide::{
     utils::command::BotCommands,
 };
 use tokio::sync::Semaphore;
-use tracing::{info, level_filters::LevelFilter, trace, warn};
+use tracing::{field, info, info_span, level_filters::LevelFilter, trace, warn, Instrument};
 use tracing_subscriber::{filter::Builder as TracingFilterBuilder, util::SubscriberInitExt};
 use url::Url;
 
@@ -77,7 +77,6 @@ async fn answer(bot: &TeloxideBot, msg: Message) -> ResponseResult<()> {
     }
 }
 
-#[tracing::instrument(skip(bot, msg))]
 async fn handle_command(bot: &TeloxideBot, msg: Message, cmd: Command) -> ResponseResult<()> {
     trace!("Handling command");
 
@@ -99,7 +98,6 @@ async fn handle_command(bot: &TeloxideBot, msg: Message, cmd: Command) -> Respon
     Ok(())
 }
 
-#[tracing::instrument(skip_all, fields(chat = ?msg.chat.id, msg = ?msg.id))]
 async fn handle_message(bot: &TeloxideBot, msg: Message) -> ResponseResult<()> {
     trace!(?msg, "Handling message");
     let Some(msg_text) = msg.text() else {
@@ -124,22 +122,44 @@ async fn handle_message(bot: &TeloxideBot, msg: Message) -> ResponseResult<()> {
         }
     };
 
-    tokio::task::spawn(async {
-        info!(url = ?parsed_url, "Starting download task");
+    let task_span = {
+        let span = info_span!(
+        "process_song",
+        url = ?parsed_url.as_str(),
+        uid = field::Empty,
+        user = field::Empty,
+        name = field::Empty,
+        );
 
-        let res = process_song(msg.into(), parsed_url).await;
-
-        if let Err(e) = res {
-            warn!(?e, "Failed to process song");
-        } else {
-            info!("Song processed");
+        if let Some(from) = msg.from() {
+            if let Some(u) = &from.username {
+                span.record("user", field::display(u));
+            }
+            span.record("uid", field::display(from.id));
+            span.record("name", field::display(from.full_name()));
         }
-    });
+
+        span
+    };
+
+    tokio::task::spawn(
+        async {
+            info!("Starting download task");
+
+            let res = process_song(msg.into(), parsed_url).await;
+
+            if let Err(e) = res {
+                warn!(?e, "Failed to process song");
+            } else {
+                info!("Song processed");
+            }
+        }
+        .instrument(task_span),
+    );
 
     Ok(())
 }
 
-#[tracing::instrument(skip_all, fields(chat = ?msg.chat_id(), msg = ?msg.msg_replying_to_id(), url = url.as_str()))]
 async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     msg.update_message("Waiting in queue...").await?;
 
