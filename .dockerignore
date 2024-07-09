@@ -9,3 +9,5 @@ Dockerfile
 .env
 .env.example
 
+LICENSE
+README.md
