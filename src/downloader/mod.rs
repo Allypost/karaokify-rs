@@ -14,12 +14,22 @@ impl Downloader {
     ) -> Result<PathBuf, anyhow::Error> {
         info!(url = ?song_url.as_str(), "Downloading song...");
 
-        for provider in HANDLERS.iter() {
-            if provider.supports(song_url).await {
-                return provider.download(download_dir, song_url).await;
+        for handler in HANDLERS.iter() {
+            if !handler.supports(song_url).await {
+                continue;
+            }
+
+            match handler.download(download_dir, song_url).await {
+                Ok(path) => return Ok(path),
+                Err(e) => {
+                    info!(?e, ?handler, "Handler failed");
+                    continue;
+                }
             }
         }
 
-        Err(anyhow::anyhow!("No provider for provided URL found"))
+        Err(anyhow::anyhow!(
+            "No handler succeeded for provided URL: {song_url}"
+        ))
     }
 }

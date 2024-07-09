@@ -13,6 +13,7 @@ pub static HANDLERS: Lazy<Vec<DownloadHandler>> = Lazy::new(|| {
     ]
 });
 
+#[derive(Debug)]
 pub struct DownloadHandler {
     provider: Box<dyn Handler>,
 }
