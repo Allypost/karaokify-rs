@@ -163,7 +163,7 @@ async fn handle_message(bot: &TeloxideBot, msg: Message) -> ResponseResult<()> {
 async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     msg.update_message("Waiting in queue...").await?;
 
-    let _permit = SONG_SEMAPHORE
+    let permit = SONG_SEMAPHORE
         .acquire()
         .await
         .expect("Semaphore should not be closed");
@@ -206,6 +206,8 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     };
 
     trace!(?stem_paths, "Stems created");
+
+    drop(permit);
 
     msg.update_message("Finished processing song. Uploading files...")
         .await?;
