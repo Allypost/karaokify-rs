@@ -927,6 +927,7 @@ dependencies = [
  "dotenvy",
  "dptree",
  "encoding_rs",
+ "futures",
  "language-tags",
  "once_cell",
  "percent-encoding",

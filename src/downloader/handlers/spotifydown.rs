@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Client as ReqwestClient;
 use serde::Deserialize;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace, warn};
 use url::Url;
 
 use super::Handler;
@@ -41,12 +41,16 @@ impl Handler for SpotifydownProvider {
             .map_err(|e| {
                 if let Some(e) = e.downcast_ref::<reqwest::Error>() {
                     if e.is_timeout() {
+                        warn!(
+                            ?e,
+                            "Timeout downloading song. Download provider may be down."
+                        );
                         return anyhow::anyhow!(
                             "Timeout downloading song. Download provider may be down."
                         );
                     }
                 }
-                info!(?e, "Failed to download song");
+                warn!(?e, "Failed to download song");
                 anyhow::anyhow!("Failed to download song from provider")
             })?;
 

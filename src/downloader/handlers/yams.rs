@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::Deserialize;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace, warn};
 use url::Url;
 
 use super::Handler;
@@ -55,12 +55,16 @@ impl Handler for YamsProvider {
             .map_err(|e| {
                 if let Some(e) = e.downcast_ref::<reqwest::Error>() {
                     if e.is_timeout() {
+                        warn!(
+                            ?e,
+                            "Timeout downloading song. Download provider may be down."
+                        );
                         return anyhow::anyhow!(
                             "Timeout downloading song. Download provider may be down."
                         );
                     }
                 }
-                info!(?e, "Failed to download song");
+                warn!(?e, "Failed to download song");
                 anyhow::anyhow!("Failed to download song from provider")
             })?;
         debug!(?download_url, "Download URL found. Downloading song zip.");

@@ -3,7 +3,10 @@ mod downloader;
 mod helpers;
 mod processor;
 
-use std::sync::Arc;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use bot::{TelegramBot, TeloxideBot};
 use downloader::Downloader;
@@ -17,11 +20,18 @@ use teloxide::{
     utils::command::BotCommands,
 };
 use tokio::sync::Semaphore;
-use tracing::{field, info, info_span, level_filters::LevelFilter, trace, warn, Instrument};
+use tracing::{debug, field, info, info_span, level_filters::LevelFilter, trace, warn, Instrument};
 use tracing_subscriber::{filter::Builder as TracingFilterBuilder, util::SubscriberInitExt};
 use url::Url;
 
 static SONG_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(1)));
+
+const MAX_PAYLOAD_SIZE: u64 = {
+    let kb = 1000;
+    let mb = kb * 1000;
+
+    50 * mb
+};
 
 #[tokio::main]
 async fn main() {
@@ -212,24 +222,134 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     msg.update_message("Finished processing song. Uploading files...")
         .await?;
 
-    trace!("Uploading files");
-    let media_group = stem_paths
-        .into_iter()
-        .map(|stem| InputMedia::Audio(InputMediaAudio::new(InputFile::file(stem))))
-        .collect::<Vec<_>>();
+    let (stem_path_chunks, failed_files) =
+        chunk_files_by_size(stem_paths, MAX_PAYLOAD_SIZE / 10 * 8).await;
 
-    TelegramBot::instance()
-        .send_media_group(msg.chat_id(), media_group)
-        .reply_to_message_id(msg.msg_replying_to_id())
-        .send()
-        .await?;
+    trace!("Uploading files");
+    for stem_paths in stem_path_chunks {
+        trace!(?stem_paths, "Uploading files chunk");
+        let media_group = stem_paths
+            .into_iter()
+            .map(|stem| InputMedia::Audio(InputMediaAudio::new(InputFile::file(stem))))
+            .collect::<Vec<_>>();
+
+        TelegramBot::instance()
+            .send_media_group(msg.chat_id(), media_group)
+            .reply_to_message_id(msg.msg_replying_to_id())
+            .allow_sending_without_reply(true)
+            .send()
+            .await?;
+        trace!("Files chunk uploaded");
+    }
     trace!("Files uploaded");
+
+    if !failed_files.is_empty() {
+        debug!(?failed_files, "Failed to chunk some files to size");
+        trace!("Generating failed files message");
+        let failed_files_msg = {
+            let mut msg = "Failed to upload some files:\n\n".to_string();
+
+            msg += failed_files
+                .into_iter()
+                .map(|(file, reason)| {
+                    format!(
+                        " - File: {}\n   Reason: {}\n",
+                        file.file_name().unwrap_or_default().to_string_lossy(),
+                        reason
+                    )
+                })
+                .reduce(|a, b| a + "\n" + &b)
+                .unwrap_or_default()
+                .as_str();
+
+            msg
+        };
+        trace!(msg = ?failed_files_msg, "Failed files message generated");
+
+        trace!("Sending failed files message");
+        TelegramBot::instance()
+            .send_message(msg.chat_id(), failed_files_msg.trim())
+            .reply_to_message_id(msg.msg_replying_to_id())
+            .allow_sending_without_reply(true)
+            .send()
+            .await?;
+        trace!("Failed files message sent");
+    }
 
     trace!("Deleting status message");
     msg.delete_message().await?;
     trace!("Status message deleted");
 
     Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+async fn chunk_files_by_size(
+    files: Vec<PathBuf>,
+    max_size: u64,
+) -> (Vec<Vec<PathBuf>>, Vec<(PathBuf, String)>) {
+    trace!("Calculating file groupings");
+    let failed = Arc::new(Mutex::new(Vec::new()));
+    let metadatas = {
+        let m = files.into_iter().map(|x| {
+            let failed = failed.clone();
+
+            async move {
+                let meta = match tokio::fs::metadata(&x).await {
+                    Ok(meta) => meta,
+                    Err(e) => {
+                        trace!(?e, "Failed to get metadata for file");
+                        if let Ok(mut failed) = failed.lock() {
+                            failed.push((x, "failed to get metadata for file".to_string()));
+                        }
+                        return None;
+                    }
+                };
+
+                Some((x, meta.len()))
+            }
+        });
+
+        futures::future::join_all(m)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+    };
+
+    let mut res = vec![];
+    let mut res_size = 0_u64;
+    let mut res_item = vec![];
+    for (path, size) in metadatas {
+        if size > max_size {
+            trace!(?path, ?size, ?max_size, "File is too large");
+            if let Ok(mut failed) = failed.lock() {
+                failed.push((path, format!("file is too large: {} > {}", size, max_size)));
+            }
+            continue;
+        }
+
+        if size + res_size > max_size {
+            res.push(res_item.clone());
+            res_size = 0;
+            res_item = vec![];
+        }
+
+        res_item.push(path);
+        res_size += size;
+    }
+    if !res_item.is_empty() {
+        res.push(res_item);
+    }
+    trace!(?res, "Got file groupings");
+
+    let failed = failed
+        .lock()
+        .map_or_else(|_| vec![], |failed| failed.iter().cloned().collect());
+
+    trace!(?failed, "Got final failed paths");
+
+    (res, failed)
 }
 
 fn init_log() {

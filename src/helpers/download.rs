@@ -10,9 +10,8 @@ use tokio::{
 };
 use tracing::{debug, trace};
 
-use crate::helpers::temp_file::TempFile;
-
 use super::header::content_disposition::ContentDisposition;
+use crate::helpers::temp_file::TempFile;
 
 #[tracing::instrument]
 pub async fn download_file(download_path: &Path, download_url: &str) -> anyhow::Result<PathBuf> {
