@@ -1,11 +1,12 @@
 use teloxide::{
-    payloads::SendMessageSetters,
+    payloads::{EditMessageTextSetters, SendMessageSetters},
     requests::Requester,
     types::{ChatId, Message, MessageId},
 };
 
 use crate::bot::TelegramBot;
 
+#[derive(Debug, Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct StatusMessage {
     chat_id: ChatId,
@@ -34,25 +35,43 @@ impl StatusMessage {
     }
 
     pub async fn update_message(&mut self, text: &str) -> Result<(), teloxide::RequestError> {
-        match self.reply_msg_id {
-            Some(reply_id) => {
-                TelegramBot::instance()
-                    .edit_message_text(self.chat_id, reply_id, text)
-                    .await?;
+        for _ in 0..3 {
+            match self.reply_msg_id {
+                Some(reply_id) => {
+                    let res = TelegramBot::instance()
+                        .edit_message_text(self.chat_id, reply_id, text)
+                        .disable_web_page_preview(true)
+                        .await;
 
-                Ok(())
-            }
-            None => {
-                let status_msg = TelegramBot::instance()
-                    .send_message(self.chat_id, text)
-                    .reply_to_message_id(self.msg_id)
-                    .await?;
+                    if matches!(
+                        res,
+                        Err(teloxide::RequestError::Api(
+                            teloxide::ApiError::MessageToEditNotFound
+                        ))
+                    ) {
+                        self.reply_msg_id = None;
+                        continue;
+                    }
 
-                self.reply_msg_id = Some(status_msg.id);
+                    return Ok(());
+                }
+                None => {
+                    let status_msg = TelegramBot::instance()
+                        .send_message(self.chat_id, text)
+                        .reply_to_message_id(self.msg_id)
+                        .allow_sending_without_reply(true)
+                        .await?;
 
-                Ok(())
+                    self.reply_msg_id = Some(status_msg.id);
+
+                    return Ok(());
+                }
             }
         }
+
+        Err(teloxide::RequestError::Api(
+            teloxide::ApiError::MessageNotModified,
+        ))
     }
 
     pub async fn delete_message(&mut self) -> Result<(), teloxide::RequestError> {
