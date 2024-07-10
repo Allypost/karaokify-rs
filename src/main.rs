@@ -12,7 +12,7 @@ use bot::{TelegramBot, TeloxideBot};
 use downloader::Downloader;
 use helpers::{status_message::StatusMessage, temp_dir::TempDir};
 use once_cell::sync::Lazy;
-use processor::song::{DemucsModel, SongProcessor};
+use processor::demucs::{DemucsModel, DemucsProcessor};
 use teloxide::{
     payloads::SendMessageSetters,
     prelude::*,
@@ -200,7 +200,7 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     )
     .await?;
 
-    let stem_paths = match SongProcessor::split_into_stems(
+    let stem_paths = match DemucsProcessor::split_into_stems(
         temp_dir.path(),
         &song_file_path,
         DemucsModel::HTDemucs,

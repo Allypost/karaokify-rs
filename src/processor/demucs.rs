@@ -36,8 +36,8 @@ impl Display for DemucsModel {
     }
 }
 
-pub struct SongProcessor;
-impl SongProcessor {
+pub struct DemucsProcessor;
+impl DemucsProcessor {
     #[tracing::instrument]
     pub async fn split_into_stems(
         output_dir: &Path,
