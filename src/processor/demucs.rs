@@ -52,6 +52,7 @@ impl DemucsProcessor {
                 .args(["--name", &demucs_model.to_string()])
                 .args(["--two-stems", "vocals"])
                 .args(["--filename", "{stem}.{ext}"])
+                .args(["--mp3-bitrate", "256"])
                 .arg("--mp3")
                 .args([
                     OsString::from("--out").as_os_str(),
@@ -115,6 +116,7 @@ impl DemucsProcessor {
                 .args([OsString::from("-i"), music_path.as_os_str().to_os_string()])
                 .args(["-filter_complex", filter_cmd])
                 .arg(demucs_stems_dir.join("music-with-quiet-vocals.mp3"))
+                .args(["-b:a", "256k"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .kill_on_drop(true)
@@ -144,6 +146,7 @@ impl DemucsProcessor {
             trace!("Re-encoding song to mp3");
             Command::new("ffmpeg")
                 .args([OsString::from("-i"), file_path.as_os_str().to_os_string()])
+                .args(["-b:a", "256k"])
                 .arg(demucs_stems_dir.join("song.mp3"))
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
