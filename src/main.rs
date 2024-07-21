@@ -154,7 +154,7 @@ async fn handle_message(bot: &TeloxideBot, msg: Message) -> ResponseResult<()> {
 
     tokio::task::spawn(
         async {
-            info!("Starting download task");
+            info!("New song queued");
 
             let res = process_song(msg.into(), parsed_url).await;
 
@@ -200,6 +200,7 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
     )
     .await?;
 
+    info!("Processing downloaded song...");
     let stem_paths = match DemucsProcessor::split_into_stems(
         temp_dir.path(),
         &song_file_path,
@@ -215,9 +216,10 @@ async fn process_song(mut msg: StatusMessage, url: Url) -> ResponseResult<()> {
         }
     };
 
-    trace!(?stem_paths, "Stems created");
-
     drop(permit);
+
+    info!("Processed downloaded song, uploading files...");
+    trace!(?stem_paths, "Stems created");
 
     msg.update_message("Finished processing song. Uploading files...")
         .await?;
