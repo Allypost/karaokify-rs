@@ -20,17 +20,21 @@ const QUALITY_MAP: &[(&str, &str)] = &[
     ("youtube", "0"),
 ];
 
+type YamsId = u64;
+
 #[derive(Debug, Deserialize)]
 struct YamsInitialResponse {
-    id: String,
+    id: YamsId,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct YamsStatusResponse {
-    #[allow(dead_code)]
+    id: YamsId,
     status: String,
-    error: String,
-    url: String,
+    progress: Option<serde_json::Value>,
+    error: Option<String>,
+    url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -155,7 +159,7 @@ impl YamsProvider {
         Self::wait_for_song_to_finish(&download_id).await
     }
 
-    async fn initialize_song_download(song_url: &Url) -> anyhow::Result<String> {
+    async fn initialize_song_download(song_url: &Url) -> anyhow::Result<YamsId> {
         debug!("Initializing song download");
 
         let quality = match Self::get_quality(song_url) {
@@ -174,15 +178,24 @@ impl YamsProvider {
             "Sending download request to music download service"
         );
 
-        reqwest::Client::new()
+        let resp = reqwest::Client::new()
             .post(API_URL)
             .json(&payload)
             .timeout(Duration::from_secs(5))
             .send()
             .await?
-            .error_for_status()?
-            .json::<YamsInitialResponse>()
-            .await
+            .error_for_status()?;
+
+        trace!(?resp, "Response received from music download service");
+
+        let resp_body = resp.text().await?;
+
+        trace!(
+            ?resp_body,
+            "Response body received from music download service"
+        );
+
+        serde_json::from_str::<YamsInitialResponse>(&resp_body)
             .map(|x| x.id)
             .map_err(std::convert::Into::into)
     }
@@ -197,10 +210,11 @@ impl YamsProvider {
         })
     }
 
-    async fn wait_for_song_to_finish(download_id: &str) -> anyhow::Result<String> {
+    async fn wait_for_song_to_finish(download_id: &YamsId) -> anyhow::Result<String> {
         debug!("Waiting for song to finish");
         let mut api_url = Url::parse(API_URL).expect("Invalid API URL");
-        api_url.query_pairs_mut().append_pair("id", download_id);
+        let download_id = format!("{download_id}");
+        api_url.query_pairs_mut().append_pair("id", &download_id);
 
         for _ in 0..300 {
             let resp = reqwest::Client::new()
@@ -214,12 +228,12 @@ impl YamsProvider {
 
             trace!(?resp, "Song download status");
 
-            if !resp.error.is_empty() {
-                anyhow::bail!(resp.error);
+            if let Some(err) = resp.error {
+                anyhow::bail!(err);
             }
 
-            if !resp.url.is_empty() {
-                return Ok(resp.url);
+            if let Some(url) = resp.url {
+                return Ok(url);
             }
 
             tokio::time::sleep(Duration::from_secs(1)).await;
